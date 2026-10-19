@@ -33,6 +33,18 @@ function(project_template TARGET_NAME)
                 PRIVATE_INCLUDES ${ARG_PRIVATE_INCLUDES}
                 TEST_SRCS ${ARG_TEST_SRCS}
             )
+    elseif(ARG_INTERFACE)
+        add_simulation_library(${TARGET_NAME}
+            INTERFACE
+            HDRS ${ARG_HDRS}
+            SRCS ${ARG_SRCS}
+            DEPENDS ${ARG_DEPENDS}
+            PUBLIC_DEPENDS ${ARG_PUBLIC_DEPENDS}
+            SUB_DIRS ${ARG_SUB_DIRS}
+            PUBLIC_INCLUDES ${ARG_PUBLIC_INCLUDES}
+            PRIVATE_INCLUDES ${ARG_PRIVATE_INCLUDES}
+            TEST_SRCS ${ARG_TEST_SRCS}
+        )
     else()
         message(FATAL_ERROR "project_template requires an EXECUTABLE or LIBRARY specification")
         endif()
@@ -100,29 +112,41 @@ endfunction()
 
 function(add_simulation_library TARGET_NAME)
     # Parse the forwarded arguments
-    set(options "")
+    set(options "INTERFACE")
     set(oneValueArgs "")
     set(multiValueArgs HDRS SRCS DEPENDS PUBLIC_DEPENDS SUB_DIRS PUBLIC_INCLUDES PRIVATE_INCLUDES TEST_SRCS)
     cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     # Create the library (STATIC, SHARED, or let CMake decide based on BUILD_SHARED_LIBS)
-    add_library(${TARGET_NAME} ${ARG_SRCS} ${ARG_HDRS})
+    if(ARG_INTERFACE)
+        add_library(${TARGET_NAME} INTERFACE)
+        if(ARG_HDRS)
+            target_sources(${TARGET_NAME} INTERFACE ${ARG_HDRS})
+        endif()
+
+        set(LINK_SCOPE "INTERFACE")
+        set(LINK_SCOPE_PUBLIC_DEPENDS "INTERFACE")
+    else()
+        add_library(${TARGET_NAME} ${ARG_SRCS} ${ARG_HDRS})
+        set(LINK_SCOPE "PRIVATE")
+        set(LINK_SCOPE_PUBLIC_DEPENDS "PUBLIC")
+    endif()
 
     # Link dependencies
     # Private Dependencies
     if(ARG_DEPENDS)
-        target_link_libraries(${TARGET_NAME} PRIVATE ${ARG_DEPENDS})
+        target_link_libraries(${TARGET_NAME} ${LINK_SCOPE} ${ARG_DEPENDS})
     endif()
 
     # Public Dependencies
     if(ARG_PUBLIC_DEPENDS)
-        target_link_libraries(${TARGET_NAME} PUBLIC ${ARG_PUBLIC_DEPENDS})
+        target_link_libraries(${TARGET_NAME} ${LINK_SCOPE_PUBLIC_DEPENDS} ${ARG_PUBLIC_DEPENDS})
     endif()
 
     # Public Includes (Transitive: consumers will see these)
     if(ARG_PUBLIC_INCLUDES)
         foreach(inc_dir IN LISTS ARG_PUBLIC_INCLUDES)
-            target_include_directories(${TARGET_NAME} PUBLIC 
+            target_include_directories(${TARGET_NAME} ${LINK_SCOPE_PUBLIC_DEPENDS} 
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${inc_dir}>
                 $<INSTALL_INTERFACE:${inc_dir}>
             )
@@ -130,7 +154,7 @@ function(add_simulation_library TARGET_NAME)
     endif()
 
     # Private Includes (Non-transitive: internal to this library only)
-    if(ARG_PRIVATE_INCLUDES)
+    if(ARG_PRIVATE_INCLUDES AND NOT ARG_INTERFACE)
         foreach(inc_dir IN LISTS ARG_PRIVATE_INCLUDES)
             target_include_directories(${TARGET_NAME} PRIVATE 
                 ${CMAKE_CURRENT_SOURCE_DIR}/${inc_dir}

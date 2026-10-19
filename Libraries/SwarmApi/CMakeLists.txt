@@ -13,5 +13,4 @@ project_template(SwarmApi LIBRARY
     SRCS  ${SRCS}
     PUBLIC_INCLUDES ./inc
     TEST_SRCS ${TESTS}
-    
 )
